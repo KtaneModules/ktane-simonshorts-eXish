@@ -18,18 +18,22 @@ public class SimonShortsScript : MonoBehaviour
     public GameObject Spark;
     public KMBombModule Module;
     public KMAudio Audio;
+    public KMColorblindMode Colorblind;
+    public TextMesh[] CBTexts;
 
-    private static int _idc;
-    private int _id = ++_idc, _stage, _pressesEntered;
+    private static int _idc = 1;
+    private int _id, _stage, _pressesEntered;
     private List<Vector3[]> _paths = new List<Vector3[]>();
     private List<Transform> _pathParents = new List<Transform>();
     private Color[] _usedColors;
     private List<Dir[]> _animations = new List<Dir[]>();
     private List<Dir> _expectedPresses = new List<Dir>();
     private bool _isSolved;
+    private bool _colorblindEnabled;
 
     private void Awake()
     {
+        _id = _idc++;
         RND rng = new RND(RNG.Range(int.MinValue, int.MaxValue));
         foreach(MeshFilter wire in Wires)
         {
@@ -45,6 +49,7 @@ public class SimonShortsScript : MonoBehaviour
             _paths.Add(be.Select(p => new Vector3((float)p.X, (float)p.Y, (float)p.Z)).ToArray());
             _pathParents.Add(wire.transform);
         }
+        _colorblindEnabled = Colorblind.ColorblindModeActive;
     }
 
     private void Start()
@@ -59,7 +64,15 @@ public class SimonShortsScript : MonoBehaviour
         _usedColors.Shuffle();
 
         for(int i = 0; i < ButtonRenderers.Length; i++)
+        {
             ButtonRenderers[i].material.color = _usedColors[i];
+            CBTexts[i].text = GetColorName(_usedColors[i])[0].ToString();
+            if (_colorblindEnabled)
+                CBTexts[i].gameObject.SetActive(true);
+        }
+
+        float scalar = transform.lossyScale.x;
+        Spark.GetComponentInChildren<Light>().range *= scalar;
 
         StartCoroutine(RunFlashes());
 
@@ -117,7 +130,7 @@ public class SimonShortsScript : MonoBehaviour
 
         _animations.Add(new Dir[] { from, to });
 
-        Debug.LogFormat("[Simon Shorts #{0}] The next flash is {1} ({2}) to {3} ({4}).", _id, from, _usedColors[(int)from], to, _usedColors[(int)to]);
+        Debug.LogFormat("[Simon Shorts #{0}] The next flash is {1} ({2}) to {3} ({4}).", _id, from, GetColorName(_usedColors[(int)from]), to, GetColorName(_usedColors[(int)to]));
 
         Color[] c = new int[] { 0, 3, 1, 2 }.Select(i => ButtonColors[i]).ToArray();
         if(from == Dir.Right && to == Dir.Left || from == Dir.Up && to == Dir.Right || from == Dir.Left && to == Dir.Down)
@@ -164,6 +177,18 @@ public class SimonShortsScript : MonoBehaviour
 
             _pressesEntered = 0;
         }
+    }
+
+    private string GetColorName(Color c)
+    {
+        if (c.r == 0.7058824f)
+            return "Red";
+        else if (c.r == 0.3499918f)
+            return "Green";
+        else if (c.r == 0)
+            return "Cyan";
+        else
+            return "Purple";
     }
 
     private Coroutine MakeAnimate(Dir from, Dir to)
@@ -277,17 +302,33 @@ public class SimonShortsScript : MonoBehaviour
         Down
     }
 
-
-
-#pragma warning disable 414
-    private const string TwitchHelpMessage = "Use \"!{0} ULRD\" to press the up, left, right, and down button.";
-#pragma warning restore 414
+    //Twitch Plays support
+    #pragma warning disable 414
+    private const string TwitchHelpMessage = "Use \"!{0} press ULRD\" to press the up, left, right, and down button where \"press\" is optional. Use \"!{0} colorblind/colourblind\" to toggle colorblind mode.";
+    #pragma warning restore 414
 
     IEnumerator ProcessTwitchCommand(string command)
     {
-        if(Regex.IsMatch(command, @"^[ULRD\s]+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        if (command.EqualsIgnoreCase("colorblind") || command.EqualsIgnoreCase("colourblind"))
         {
             yield return null;
+            _colorblindEnabled = !_colorblindEnabled;
+            if (_colorblindEnabled)
+            {
+                for (int i = 0; i < CBTexts.Length; i++)
+                    CBTexts[i].gameObject.SetActive(true);
+            }
+            else
+            {
+                for (int i = 0; i < CBTexts.Length; i++)
+                    CBTexts[i].gameObject.SetActive(false);
+            }
+            yield break;
+        }
+        if(Regex.IsMatch(command, @"^(press\s)?[ULRD\s]+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            yield return null;
+            command = command.Replace("press ", "");
             foreach(char c in command.ToLowerInvariant())
             {
                 if(c == 'u')
@@ -302,7 +343,6 @@ public class SimonShortsScript : MonoBehaviour
                     continue;
                 yield return new WaitForSeconds(0.1f);
             }
-            yield return "solve";
         }
     }
 
